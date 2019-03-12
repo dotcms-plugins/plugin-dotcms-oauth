@@ -36,7 +36,7 @@ jar {
     }
 }
 
-task removeVersionsOnManifest (dependsOn: ['jar']) << {
+task removeVersionsOnManifest (dependsOn: ['jar']) {
 	def manifest1=new java.util.jar.Manifest(new FileInputStream('build/tmp/jar/MANIFEST.MF'))
 	def imports = manifest1.getMainAttributes().find { it.key.toString()=="Import-Package" }
 	imports.value=imports.value.toString().replaceAll(~/;version="[\(\[][0-9\.]+,[0-9\.]+[\)\]]"/,'')
