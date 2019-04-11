@@ -7,6 +7,7 @@ version = '0.4.2'
 
 repositories {
     maven { url "http://repo.dotcms.com/artifactory/libs-release" }
+     jcenter()
 }
 
 configurations {
@@ -14,10 +15,12 @@ configurations {
 }
 
 dependencies {
-    compile('com.dotcms:dotcms:5.0.3') { transitive = true }
-    compile group: 'org.scribe', name: 'scribe', version: '1.3.7'
+    compile('com.dotcms:dotcms:5.1.1') { transitive = true }
+    compile group: 'com.github.scribejava', name: 'scribejava-apis', version: '6.5.1'
     compileOnly group: 'javax.servlet', name: 'jsp-api', version: '2.0'
-    pluginLibs group: 'org.scribe', name: 'scribe', version: '1.3.7'
+    compileOnly group: 'javax.servlet', name: 'jsp-api', version: '2.0'
+    pluginLibs group: 'com.github.scribejava', name: 'scribejava-apis', version: '6.5.1'
+    testCompile 'junit:junit:4.12'
 }
 
 
@@ -33,7 +36,7 @@ jar {
                 'Bundle-Description': 'dotCMS - OAuth / OIDC ',
                 'Bundle-DocURL': 'https://dotcms.com/',
                 'Bundle-Activator': 'com.dotcms.osgi.oauth.Activator',
-                'Bundle-ClassPath': '.,libs/scribe-1.3.7.jar',
+                'Bundle-ClassPath': '.,libs/scribe-6.5.1.jar',
                 'Import-Package': '*;version=0'
         )
     }

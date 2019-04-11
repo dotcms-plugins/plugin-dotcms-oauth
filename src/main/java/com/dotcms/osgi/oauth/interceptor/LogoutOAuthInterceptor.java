@@ -9,14 +9,17 @@ import com.dotcms.osgi.oauth.service.DotService;
 import com.dotcms.osgi.oauth.util.OauthUtils;
 import com.dotmarketing.exception.DotDataException;
 import com.dotmarketing.util.Logger;
+import com.github.scribejava.core.builder.ServiceBuilder;
+import com.github.scribejava.core.builder.api.DefaultApi20;
+import com.github.scribejava.core.model.OAuthConstants;
+import com.github.scribejava.core.oauth.OAuth20Service;
+
 import java.io.IOException;
+import java.util.concurrent.ExecutionException;
+
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
-import org.scribe.builder.ServiceBuilder;
-import org.scribe.builder.api.DefaultApi20;
-import org.scribe.model.OAuthConstants;
-import org.scribe.oauth.OAuthService;
 
 /**
  * @author Jonathan Gamba 8/28/18
@@ -64,15 +67,18 @@ public class LogoutOAuthInterceptor implements WebInterceptor {
                     final String apiKey = getProperty(providerName + "_API_KEY");
                     final String apiSecret = getProperty(providerName + "_API_SECRET");
 
-                    final OAuthService service = new ServiceBuilder()
-                            .apiKey(apiKey)
+                    final OAuth20Service service = new ServiceBuilder(apiKey)
                             .apiSecret(apiSecret)
-                            .provider(apiProvider)
-                            .build();
+                            .build(apiProvider);
 
                     //Invalidate the token
                     if (service instanceof DotService) {
-                        ((DotService) service).revokeToken(accessToken);
+                        try {
+                          ((DotService) service).revokeToken(accessToken);
+                        } catch (InterruptedException | ExecutionException e) {
+                          // TODO Auto-generated catch block
+                          e.printStackTrace();
+                        }
                     }
 
                     //Cleaning up the session

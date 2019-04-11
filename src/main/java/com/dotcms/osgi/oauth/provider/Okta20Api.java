@@ -9,21 +9,24 @@ import com.dotmarketing.util.Logger;
 import com.dotmarketing.util.json.JSONArray;
 import com.dotmarketing.util.json.JSONException;
 import com.dotmarketing.util.json.JSONObject;
+import com.github.scribejava.core.builder.api.DefaultApi20;
+import com.github.scribejava.core.exceptions.OAuthException;
+import com.github.scribejava.core.httpclient.HttpClient;
+import com.github.scribejava.core.httpclient.HttpClientConfig;
+import com.github.scribejava.core.model.OAuthConstants;
+import com.github.scribejava.core.model.OAuthRequest;
+import com.github.scribejava.core.model.Response;
+import com.github.scribejava.core.model.Verb;
+import com.github.scribejava.core.oauth.OAuth20Service;
 import com.liferay.portal.model.User;
+
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Map;
 import java.util.Random;
-import org.scribe.builder.api.DefaultApi20;
-import org.scribe.exceptions.OAuthException;
-import org.scribe.extractors.AccessTokenExtractor;
-import org.scribe.model.OAuthConfig;
-import org.scribe.model.OAuthConstants;
-import org.scribe.model.OAuthRequest;
-import org.scribe.model.Response;
-import org.scribe.model.Token;
-import org.scribe.model.Verb;
-import org.scribe.oauth.OAuth20ServiceImpl;
-import org.scribe.oauth.OAuthService;
+import java.util.concurrent.ExecutionException;
+
 
 /**
  * @author Jonathan Gamba 8/24/18
@@ -58,33 +61,24 @@ public class Okta20Api extends DefaultApi20 implements DotProvider {
         return Verb.POST;
     }
 
-    /**
-     * This is a starting point for browser-based OpenID Connect flows such as the implicit and
-     * authorization code flows. This request authenticates the user and returns tokens along with
-     * an authorization grant to the client application as a part of the callback response.
-     * https://developer.okta.com/authentication-guide/implementing-authentication/auth-code
-     */
+    
     @Override
-    public String getAuthorizationUrl(OAuthConfig config) {
-
-        /*
-        NOTE: The callback domain must be added as a trusted origin -> admin/access/api/trusted_origins
-        also can be configured in Applications -> Your application -> General
-         */
-
-        return getBaseAuthorizationUrl() + String.format(""
-                        + "?client_id=%s"
-                        + "&response_type=%s"
-                        + "&scope=%s"
-                        + "&redirect_uri=%s"
-                        + "&state=%s",
-                config.getApiKey(),
-                getResponseType(),
-                config.getScope(),
-                config.getCallback(),
-                getState()
-        );
+    protected String getAuthorizationBaseUrl() {
+      // TODO Auto-generated method stub
+      return null;
     }
+
+  @Override
+  public String getAuthorizationUrl(String responseType, String apiKey, String callback, String scope, String state,
+      Map<String, String> additionalParams) {
+
+    return getBaseAuthorizationUrl()
+        + String.format("" + "?client_id=%s" + "&response_type=%s" + "&scope=%s" + "&redirect_uri=%s" + "&state=%s", apiKey, responseType,
+            scope, callback, state);
+
+  }
+
+
 
     private String getBaseAuthorizationUrl() {
         return String.format("%s/oauth2/v1/authorize", getOrganizationURL());
@@ -114,49 +108,29 @@ public class Okta20Api extends DefaultApi20 implements DotProvider {
         return this.getClass().getSimpleName();
     }
 
-    /**
-     * Simple command object that extracts a {@link Token} from a String
-     */
-    public AccessTokenExtractor getAccessTokenExtractor() {
 
-        return new AccessTokenExtractor() {
 
-            @Override
-            public Token extract(String response) {
-                return OauthUtils.getInstance().extractToken(response);
-            }
+    private class Okta20Service extends OAuth20Service implements DotService {
 
-        };
-    }
-
-    @Override
-    public OAuthService createService(OAuthConfig config) {
-        return new Okta20Service(this, config);
-    }
-
-    private class Okta20Service extends OAuth20ServiceImpl implements DotService {
+        public Okta20Service(DefaultApi20 api, String apiKey, String apiSecret, String callback, String defaultScope, String responseType,
+          String userAgent, HttpClientConfig httpClientConfig, HttpClient httpClient) {
+        super(api, apiKey, apiSecret, callback, defaultScope, responseType, userAgent, httpClientConfig, httpClient);
+        // TODO Auto-generated constructor stub
+      }
 
         Okta20Api api;
-        OAuthConfig config;
 
-        Okta20Service(DefaultApi20 api, OAuthConfig config) {
-            super(api, config);
 
-            this.api = (Okta20Api) api;
-            this.config = config;
-        }
-
-        @Override
-        public void signRequest(Token accessToken, OAuthRequest request) {
-            request.addHeader("Authorization", "Bearer " + accessToken.getToken());
-        }
 
         /**
          * Custom implementation (extra call) in order to get roles/groups from the Okta server as
          * the request that returns the user data does not have the user groups.
+         * @throws IOException 
+         * @throws ExecutionException 
+         * @throws InterruptedException 
          */
         @Override
-        public Collection<String> getGroups(User user, final JSONObject userJsonResponse) {
+        public Collection<String> getGroups(User user, final JSONObject userJsonResponse) throws InterruptedException, ExecutionException, IOException {
 
             final String providerName = getSimpleName();
             final String groupPrefix = getProperty(providerName + "_GROUP_PREFIX");
@@ -172,7 +146,7 @@ public class Okta20Api extends DefaultApi20 implements DotProvider {
             oauthGroupsRequest.addHeader("Content-Type", "application/json");
             oauthGroupsRequest.addHeader("Accept", "application/json");
 
-            final Response groupsCallResponse = oauthGroupsRequest.send();
+            final Response groupsCallResponse = execute(oauthGroupsRequest);
             if (!groupsCallResponse.isSuccessful()) {
                 throw new OAuthException(
                         String.format("Unable to connect to end point [%s] [%s]",
@@ -218,7 +192,7 @@ public class Okta20Api extends DefaultApi20 implements DotProvider {
         }
 
         @Override
-        public void revokeToken(String token) {
+        public void revokeToken(String token) throws InterruptedException, ExecutionException, IOException {
 
             //Now lets try to invalidate the token
             final String revokeURL = this.api.getRevokeTokenEndpoint();
@@ -229,11 +203,11 @@ public class Okta20Api extends DefaultApi20 implements DotProvider {
                 revokeRequest.addQuerystringParameter("token", token);
                 revokeRequest
                         .addQuerystringParameter("token_type_hint", OAuthConstants.ACCESS_TOKEN);
-                revokeRequest.addQuerystringParameter(OAuthConstants.CLIENT_ID, config.getApiKey());
+                revokeRequest.addQuerystringParameter(OAuthConstants.CLIENT_ID, getApiKey());
                 revokeRequest.addQuerystringParameter(OAuthConstants.CLIENT_SECRET,
-                        config.getApiSecret());
+                        getApiSecret());
 
-                final Response revokeCallResponse = revokeRequest.send();
+                final Response revokeCallResponse = execute(revokeRequest);
 
                 if (!revokeCallResponse.isSuccessful()) {
                     Logger.error(this.getClass(),

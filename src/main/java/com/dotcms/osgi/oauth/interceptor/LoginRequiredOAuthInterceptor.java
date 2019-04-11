@@ -14,14 +14,17 @@ import com.dotcms.filters.interceptor.WebInterceptor;
 import com.dotcms.osgi.oauth.util.OauthUtils;
 import com.dotmarketing.business.APILocator;
 import com.dotmarketing.util.Logger;
+import com.github.scribejava.apis.MicrosoftAzureActiveDirectory20Api;
+import com.github.scribejava.core.builder.ServiceBuilder;
+import com.github.scribejava.core.builder.api.DefaultApi20;
+import com.github.scribejava.core.model.OAuth2AccessToken;
+import com.github.scribejava.core.oauth.OAuth20Service;
+
 import java.io.IOException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
-import org.scribe.builder.ServiceBuilder;
-import org.scribe.builder.api.DefaultApi20;
-import org.scribe.model.Token;
-import org.scribe.oauth.OAuthService;
+
 
 /**
  * This interceptor is used for handle the OAuth login check on DotCMS BE.
@@ -43,7 +46,7 @@ public class LoginRequiredOAuthInterceptor implements WebInterceptor {
     private static final String[] FRONT_END_URLS =
             new String[]{"/dotcms/login"};
 
-    private static final Token EMPTY_TOKEN = null;
+    private static final OAuth2AccessToken EMPTY_TOKEN = null;
 
     private final String oauthCallBackURL;
     private final boolean isFrontEnd;
@@ -125,14 +128,13 @@ public class LoginRequiredOAuthInterceptor implements WebInterceptor {
                     final String apiSecret = getProperty(providerName + "_API_SECRET");
                     final String scope = getProperty(providerName + "_SCOPE");
 
+                    
                     // todo: this should be a factory based on the provider type
-                    final OAuthService service = new ServiceBuilder()
-                            .apiKey(apiKey)
+                    final OAuth20Service service = new ServiceBuilder(apiKey)
                             .apiSecret(apiSecret)
                             .callback(callbackHost + this.oauthCallBackURL)
-                            .provider(apiProvider)
-                            .scope(scope)
-                            .build();
+                            .defaultScope(scope)
+                            .build(apiProvider);
 
                     // Send for authorization
                     Logger.info(this.getClass(), "Sending for authorization");
@@ -148,7 +150,7 @@ public class LoginRequiredOAuthInterceptor implements WebInterceptor {
 
     private void sendForAuthorization(final HttpServletRequest request,
             final HttpServletResponse response,
-            final OAuthService service,
+            final OAuth20Service service,
             final DefaultApi20 apiProvider) throws IOException {
 
         String retUrl = (String) request.getAttribute(JAVAX_SERVLET_FORWARD_REQUEST_URI);
@@ -165,7 +167,7 @@ public class LoginRequiredOAuthInterceptor implements WebInterceptor {
         request.getSession().setAttribute(OAUTH_SERVICE, service);
         request.getSession().setAttribute(OAUTH_API_PROVIDER, apiProvider);
 
-        final String authorizationUrl = service.getAuthorizationUrl(EMPTY_TOKEN);
+        final String authorizationUrl = service.getAuthorizationUrl();
         Logger.info(this.getClass(), "Redirecting for authentication to: " + authorizationUrl);
         response.sendRedirect(authorizationUrl);
     }

@@ -3,6 +3,8 @@ package com.dotcms.osgi.oauth.util;
 import static com.dotcms.osgi.oauth.util.OAuthPropertyBundle.getProperty;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import java.io.IOException;
+
 import com.dotcms.enterprise.PasswordFactoryProxy;
 import com.dotcms.enterprise.de.qaware.heimdall.PasswordException;
 import com.dotcms.osgi.oauth.service.DotService;
@@ -16,25 +18,28 @@ import com.dotmarketing.util.Logger;
 import com.dotmarketing.util.UUIDGenerator;
 import com.dotmarketing.util.json.JSONException;
 import com.dotmarketing.util.json.JSONObject;
+import com.github.scribejava.core.builder.api.DefaultApi20;
+import com.github.scribejava.core.exceptions.OAuthException;
+import com.github.scribejava.core.model.OAuth2AccessToken;
+import com.github.scribejava.core.model.OAuthConstants;
+import com.github.scribejava.core.model.OAuthRequest;
+import com.github.scribejava.core.model.Response;
+import com.github.scribejava.core.model.Verb;
+import com.github.scribejava.core.oauth.OAuth20Service;
+import com.github.scribejava.core.utils.OAuthEncoder;
+import com.github.scribejava.core.utils.Preconditions;
 import com.liferay.portal.auth.PrincipalThreadLocal;
 import com.liferay.portal.model.User;
 import com.liferay.portal.util.WebKeys;
 import java.util.Collection;
 import java.util.Date;
 import java.util.StringTokenizer;
+import java.util.concurrent.ExecutionException;
+
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
-import org.scribe.builder.api.DefaultApi20;
-import org.scribe.exceptions.OAuthException;
-import org.scribe.model.OAuthConstants;
-import org.scribe.model.OAuthRequest;
-import org.scribe.model.Response;
-import org.scribe.model.Token;
-import org.scribe.model.Verb;
-import org.scribe.oauth.OAuthService;
-import org.scribe.utils.OAuthEncoder;
-import org.scribe.utils.Preconditions;
+
 
 /**
  * @author Jonathan Gamba 8/24/18
@@ -139,7 +144,7 @@ public class OauthUtils {
      * Default method implementation to extract the access token from the request token json
      * response
      */
-    public Token extractToken(String response) {
+    public OAuth2AccessToken extractToken(String response) {
 
         Preconditions.checkEmptyString(response,
                 "Response body is incorrect. Can't extract a token from an empty string");
@@ -149,7 +154,7 @@ public class OauthUtils {
             if (jsonResponse.has(OAuthConstants.ACCESS_TOKEN)) {
                 String token = OAuthEncoder
                         .decode(jsonResponse.get(OAuthConstants.ACCESS_TOKEN).toString());
-                return new Token(token, EMPTY_SECRET, response);
+                return new OAuth2AccessToken(token, response);
             } else {
                 throw new OAuthException(
                         "Response body is incorrect. Can't extract a token from this: '"
@@ -167,19 +172,22 @@ public class OauthUtils {
     /**
      * This method gets the user from the remote service and either creates them in dotCMS and/or
      * updates
+     * @throws IOException 
+     * @throws ExecutionException 
+     * @throws InterruptedException 
      */
     public User authenticate(final HttpServletRequest request, final HttpServletResponse response,
-            final Token accessToken, final OAuthService service,
+            final OAuth2AccessToken accessToken, final OAuth20Service service,
             final String protectedResourceUrl, final String firstNameProp,
             final String lastNameProp)
-            throws DotDataException {
+            throws DotDataException, InterruptedException, ExecutionException, IOException {
 
         final User systemUser = APILocator.getUserAPI().getSystemUser();
 
         //Now that we have the token lets try a call to a restricted end point
         final OAuthRequest oauthRequest = new OAuthRequest(Verb.GET, protectedResourceUrl);
         service.signRequest(accessToken, oauthRequest);
-        final Response protectedCallResponse = oauthRequest.send();
+        final Response protectedCallResponse = service.execute(oauthRequest);
         if (!protectedCallResponse.isSuccessful()) {
             throw new OAuthException(
                     String.format("Unable to connect to end point [%s] [%s]",
@@ -244,16 +252,16 @@ public class OauthUtils {
             }
 
             //Keep the token in session
-            httpSession.setAttribute(OAuthConstants.ACCESS_TOKEN, accessToken.getToken());
+            httpSession.setAttribute(OAuthConstants.ACCESS_TOKEN, accessToken.getAccessToken());
         }
 
         return user;
     } //authenticate.
 
-    private void setRoles(final OAuthService service,
+    private void setRoles(final OAuth20Service service,
             final JSONObject userJsonResponse,
             final User user)
-            throws DotDataException {
+            throws DotDataException, InterruptedException, ExecutionException, IOException {
 
         /*
         NOTE: We are not creating roles here, the role needs to exist in order to be

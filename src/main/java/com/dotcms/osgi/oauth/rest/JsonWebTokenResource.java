@@ -30,6 +30,12 @@ import com.dotmarketing.util.Config;
 import com.dotmarketing.util.Logger;
 import com.dotmarketing.util.SecurityLogger;
 import com.dotmarketing.util.UtilMethods;
+import com.github.scribejava.core.builder.ServiceBuilder;
+import com.github.scribejava.core.builder.api.DefaultApi20;
+import com.github.scribejava.core.httpclient.HttpClientConfig;
+import com.github.scribejava.core.model.OAuth2AccessToken;
+import com.github.scribejava.core.oauth.OAuth20Service;
+import com.github.scribejava.core.oauth.OAuthService;
 import com.liferay.portal.NoSuchUserException;
 import com.liferay.portal.PortalException;
 import com.liferay.portal.RequiredLayoutException;
@@ -49,10 +55,6 @@ import java.util.Locale;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
-import org.scribe.builder.ServiceBuilder;
-import org.scribe.builder.api.DefaultApi20;
-import org.scribe.model.Token;
-import org.scribe.oauth.OAuthService;
 
 /**
  * Create a new Json Web Token
@@ -179,13 +181,21 @@ public class JsonWebTokenResource implements Serializable {
                         final String firstNameProp = getProperty(providerName + "_FIRST_NAME_PROP");
                         final String lastNameProp = getProperty(providerName + "_LAST_NAME_PROP");
 
+                        
+                        HttpClientConfig config = new HttpClientConfig() {
+                          
+                          @Override
+                          public HttpClientConfig createDefaultConfig() {
+                            // TODO Auto-generated method stub
+                            return null;
+                          }
+                        };
                         //Build the oauth service for the requested provider
-                        final OAuthService service = new ServiceBuilder()
+                        final OAuth20Service service = new ServiceBuilder(apiKey)
                                 .apiKey(apiKey)
                                 .apiSecret(apiSecret)
-                                .provider(apiProvider)
-                                .scope(scope)
-                                .build();
+                                .defaultScope(scope)
+                                .build(apiProvider);
 
                         // Send for authorization
                         Logger.info(this.getClass(),
@@ -193,7 +203,7 @@ public class JsonWebTokenResource implements Serializable {
                                         + "token and for the provider [%s]", providerName));
 
                         //Now that we have a access token we can retrieve the user info and authenticate it
-                        final Token accessToken = new Token(oauth2Token, EMPTY_SECRET, oauth2Token);
+                        final OAuth2AccessToken accessToken =new OAuth2AccessToken(oauth2Token);
                         user = this.oauthUtils.authenticate(request, response, accessToken, service,
                                 protectedResourceUrl, firstNameProp, lastNameProp);
 
