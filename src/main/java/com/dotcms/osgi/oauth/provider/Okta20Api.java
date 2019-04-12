@@ -60,13 +60,13 @@ public class Okta20Api extends DefaultApi20 implements DotProvider {
     public Verb getAccessTokenVerb() {
         return Verb.POST;
     }
-
-    
     @Override
     protected String getAuthorizationBaseUrl() {
       // TODO Auto-generated method stub
       return null;
     }
+
+    
 
   @Override
   public String getAuthorizationUrl(String responseType, String apiKey, String callback, String scope, String state,
@@ -88,21 +88,7 @@ public class Okta20Api extends DefaultApi20 implements DotProvider {
         return getProperty(getSimpleName() + "_ORGANIZATION_URL");
     }
 
-    /**
-     * response_type is code, indicating that we are using the authorization code grant type.
-     */
-    private String getResponseType() {
-        return "code";
-    }
 
-    /**
-     * state is an arbitrary alphanumeric string that the authorization server will reproduce when
-     * redirecting the user-agent back to the client. This is used to help prevent cross-site
-     * request forgery.
-     */
-    private String getState() {
-        return this.state;
-    }
 
     private String getSimpleName() {
         return this.getClass().getSimpleName();
@@ -224,5 +210,8 @@ public class Okta20Api extends DefaultApi20 implements DotProvider {
         }
 
     }
+
+
+
 
 }

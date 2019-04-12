@@ -105,10 +105,12 @@ public class OauthUtils {
       try {
 
         Class clazz = Class.forName(oauthProvider);
-        Method instanceMethod = clazz.getDeclaredMethod("instance");
-        if (instanceMethod != null) {
+        try {
+          Method instanceMethod = clazz.getDeclaredMethod("instance");
           apiProvider = (DefaultApi20) instanceMethod.invoke(clazz);
-        } else {
+        }
+        catch(NoSuchMethodException nsm) {
+          // trying a new instance
           apiProvider = (DefaultApi20) clazz.newInstance();
         }
 

@@ -2,20 +2,23 @@ package com.dotcms.osgi.oauth.provider;
 
 import static com.dotcms.osgi.oauth.util.OAuthPropertyBundle.getProperty;
 
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Random;
-
+import com.dotcms.osgi.oauth.util.OauthUtils;
 import com.dotcms.osgi.oauth.service.DotService;
+import com.dotmarketing.util.Logger;
 import com.dotmarketing.util.json.JSONException;
 import com.dotmarketing.util.json.JSONObject;
 import com.github.scribejava.core.builder.api.DefaultApi20;
 import com.github.scribejava.core.exceptions.OAuthException;
 import com.github.scribejava.core.httpclient.HttpClient;
 import com.github.scribejava.core.httpclient.HttpClientConfig;
+import com.github.scribejava.core.model.OAuthRequest;
 import com.github.scribejava.core.model.Verb;
 import com.github.scribejava.core.oauth.OAuth20Service;
 import com.liferay.portal.model.User;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Map;
+import java.util.Random;
 
 /**
  * https://www.pingidentity.com/content/developer/en/resources/oauth-2-0-developers-guide.html
