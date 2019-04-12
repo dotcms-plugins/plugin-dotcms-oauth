@@ -3,6 +3,13 @@ package com.dotcms.osgi.oauth.interceptor;
 import static com.dotcms.osgi.oauth.util.OAuthPropertyBundle.getProperty;
 import static com.dotcms.osgi.oauth.util.OauthUtils.OAUTH_PROVIDER;
 
+import java.io.IOException;
+import java.util.concurrent.ExecutionException;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpSession;
+
 import com.dotcms.filters.interceptor.Result;
 import com.dotcms.filters.interceptor.WebInterceptor;
 import com.dotcms.osgi.oauth.service.DotService;
@@ -13,13 +20,6 @@ import com.github.scribejava.core.builder.ServiceBuilder;
 import com.github.scribejava.core.builder.api.DefaultApi20;
 import com.github.scribejava.core.model.OAuthConstants;
 import com.github.scribejava.core.oauth.OAuth20Service;
-
-import java.io.IOException;
-import java.util.concurrent.ExecutionException;
-
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.HttpSession;
 
 /**
  * @author Jonathan Gamba 8/28/18
@@ -57,20 +57,10 @@ public class LogoutOAuthInterceptor implements WebInterceptor {
             final Object accessTokenObject = session.getAttribute(OAuthConstants.ACCESS_TOKEN);
             if (null != accessTokenObject) {
 
-                //Look for the provider to use
-                DefaultApi20 apiProvider = this.oauthUtils.getAPIProvider(request, session);
+              final OAuth20Service service = this.oauthUtils.getOAuthService(request);
+                DefaultApi20 apiProvider = service.getApi();
                 if (null != apiProvider) {
-
                     final String accessToken = (String) accessTokenObject;
-
-                    final String providerName = apiProvider.getClass().getSimpleName();
-                    final String apiKey = getProperty(providerName + "_API_KEY");
-                    final String apiSecret = getProperty(providerName + "_API_SECRET");
-
-                    final OAuth20Service service = new ServiceBuilder(apiKey)
-                            .apiSecret(apiSecret)
-                            .build(apiProvider);
-
                     //Invalidate the token
                     if (service instanceof DotService) {
                         try {

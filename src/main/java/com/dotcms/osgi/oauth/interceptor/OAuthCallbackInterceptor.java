@@ -14,6 +14,13 @@ import static com.dotcms.osgi.oauth.util.OauthUtils.OAUTH_PROVIDER;
 import static com.dotcms.osgi.oauth.util.OauthUtils.OAUTH_REDIRECT;
 import static com.dotcms.osgi.oauth.util.OauthUtils.OAUTH_SERVICE;
 
+import java.io.IOException;
+import java.util.concurrent.ExecutionException;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpSession;
+
 import com.dotcms.filters.interceptor.Result;
 import com.dotcms.filters.interceptor.WebInterceptor;
 import com.dotcms.osgi.oauth.util.OauthUtils;
@@ -25,12 +32,6 @@ import com.github.scribejava.core.model.OAuth2AccessToken;
 import com.github.scribejava.core.model.OAuthConstants;
 import com.github.scribejava.core.oauth.OAuth20Service;
 import com.liferay.portal.model.User;
-import java.io.IOException;
-import java.util.concurrent.ExecutionException;
-
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.HttpSession;
 
 public class OAuthCallbackInterceptor implements WebInterceptor {
 
@@ -71,8 +72,8 @@ public class OAuthCallbackInterceptor implements WebInterceptor {
         Logger.info(this.getClass(), "Code param found, doing callback");
         try {
 
-          final OAuth20Service oAuthService = (OAuth20Service) session.getAttribute(OAUTH_SERVICE);
-          final DefaultApi20 apiProvider = (DefaultApi20) session.getAttribute(OAUTH_API_PROVIDER);
+          final OAuth20Service oAuthService = oauthUtils.getOAuthService(request);
+          final DefaultApi20 apiProvider = oAuthService.getApi();
 
           final String providerName = apiProvider.getClass().getSimpleName();
           final String protectedResourceUrl = getProperty(providerName + "_PROTECTED_RESOURCE_URL");
@@ -120,6 +121,7 @@ public class OAuthCallbackInterceptor implements WebInterceptor {
     // Request the access token with the authentication code
 
     final OAuth2AccessToken accessToken = service.getAccessToken(request.getParameter("code"));
+
     Logger.info(this.getClass(), "Got the Access Token!");
 
     // Now that we have a access token we can retrieve the user info and authenticate it

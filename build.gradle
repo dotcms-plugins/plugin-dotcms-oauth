@@ -36,7 +36,7 @@ jar {
                 'Bundle-Description': 'dotCMS - OAuth / OIDC ',
                 'Bundle-DocURL': 'https://dotcms.com/',
                 'Bundle-Activator': 'com.dotcms.osgi.oauth.Activator',
-                'Bundle-ClassPath': '.,libs/scribe-6.5.1.jar',
+                'Bundle-ClassPath': '.,libs/scribejava-apis-6.5.1.jar,libs/scribejava-core-6.5.1.jar',
                 'Import-Package': '*;version=0'
         )
     }

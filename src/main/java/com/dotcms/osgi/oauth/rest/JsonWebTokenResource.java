@@ -169,15 +169,14 @@ public class JsonWebTokenResource implements Serializable {
                     }
 
                     //Look for the provider to use
-                    DefaultApi20 apiProvider = this.oauthUtils.getAPIProvider(request, session);
+                    final OAuth20Service service = this.oauthUtils.getOAuthService(request);
+                    DefaultApi20 apiProvider = service.getApi();
                     if (null != apiProvider) {
 
                         final String providerName = apiProvider.getClass().getSimpleName();
                         final String protectedResourceUrl = getProperty(
                                 providerName + "_PROTECTED_RESOURCE_URL");
-                        final String apiKey = getProperty(providerName + "_API_KEY");
-                        final String apiSecret = getProperty(providerName + "_API_SECRET");
-                        final String scope = getProperty(providerName + "_SCOPE");
+
                         final String firstNameProp = getProperty(providerName + "_FIRST_NAME_PROP");
                         final String lastNameProp = getProperty(providerName + "_LAST_NAME_PROP");
 
@@ -190,12 +189,7 @@ public class JsonWebTokenResource implements Serializable {
                             return null;
                           }
                         };
-                        //Build the oauth service for the requested provider
-                        final OAuth20Service service = new ServiceBuilder(apiKey)
-                                .apiKey(apiKey)
-                                .apiSecret(apiSecret)
-                                .defaultScope(scope)
-                                .build(apiProvider);
+
 
                         // Send for authorization
                         Logger.info(this.getClass(),
