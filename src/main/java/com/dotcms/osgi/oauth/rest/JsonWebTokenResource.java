@@ -77,7 +77,6 @@ public class JsonWebTokenResource implements Serializable {
      */
     public JsonWebTokenResource() {
         this(
-                OauthUtils.getInstance(),
                 ResponseUtil.INSTANCE,
                 JsonWebTokenUtils.getInstance(),
                 APILocator.getSecurityLogger(),
@@ -87,13 +86,12 @@ public class JsonWebTokenResource implements Serializable {
 
     @VisibleForTesting
     protected JsonWebTokenResource(
-            final OauthUtils oauthUtils,
             final ResponseUtil responseUtil,
             final JsonWebTokenUtils jsonWebTokenUtils,
             final SecurityLoggerServiceAPI securityLoggerServiceAPI,
             final WebResource webResource
     ) {
-        this.oauthUtils = oauthUtils;
+        this.oauthUtils = new OauthUtils();
         this.responseUtil = responseUtil;
         this.jsonWebTokenUtils = jsonWebTokenUtils;
         this.securityLoggerServiceAPI = securityLoggerServiceAPI;

@@ -38,12 +38,12 @@ public class OAuthCallbackInterceptor implements WebInterceptor {
   private static final String NAME = "AutoLoginOAuthInterceptor_5_0_1";
   private final String oauthCallBackURL;
   private final boolean isBackEnd;
-  private final OauthUtils oauthUtils;
+
 
   public OAuthCallbackInterceptor() throws DotDataException {
-    this.oauthUtils = OauthUtils.getInstance();
+
     this.oauthCallBackURL = getProperty(CALLBACK_URL).toLowerCase();
-    this.isBackEnd = oauthUtils.forBackEnd();
+    this.isBackEnd = new OauthUtils().forBackEnd();
   }
 
   @Override
@@ -72,7 +72,7 @@ public class OAuthCallbackInterceptor implements WebInterceptor {
         Logger.info(this.getClass(), "Code param found, doing callback");
         try {
 
-          final OAuth20Service oAuthService = oauthUtils.getOAuthService(request);
+          final OAuth20Service oAuthService = new OauthUtils().getOAuthService(request);
           final DefaultApi20 apiProvider = oAuthService.getApi();
 
           final String providerName = apiProvider.getClass().getSimpleName();
@@ -125,7 +125,7 @@ public class OAuthCallbackInterceptor implements WebInterceptor {
     Logger.info(this.getClass(), "Got the Access Token!");
 
     // Now that we have a access token we can retrieve the user info and authenticate it
-    return oauthUtils.authenticate(request, response, accessToken, service, protectedResourceUrl, firstNameProp, lastNameProp);
+    return new OauthUtils().authenticate(request, response, accessToken, service, protectedResourceUrl, firstNameProp, lastNameProp);
   }
 
   private void alreadyLoggedIn(HttpServletResponse response) throws IOException {

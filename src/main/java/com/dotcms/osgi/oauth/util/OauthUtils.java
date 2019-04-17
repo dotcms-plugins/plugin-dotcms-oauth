@@ -1,11 +1,17 @@
 package com.dotcms.osgi.oauth.util;
 
 import static com.dotcms.osgi.oauth.util.OAuthPropertyBundle.getProperty;
-import static com.dotcms.osgi.oauth.util.OauthUtils.CALLBACK_URL;
-import static java.nio.charset.StandardCharsets.UTF_8;
 
 import java.io.IOException;
 import java.lang.reflect.Method;
+import java.util.Collection;
+import java.util.Date;
+import java.util.StringTokenizer;
+import java.util.concurrent.ExecutionException;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpSession;
 
 import com.dotcms.enterprise.PasswordFactoryProxy;
 import com.dotcms.enterprise.de.qaware.heimdall.PasswordException;
@@ -35,14 +41,6 @@ import com.github.scribejava.core.utils.Preconditions;
 import com.liferay.portal.auth.PrincipalThreadLocal;
 import com.liferay.portal.model.User;
 import com.liferay.portal.util.WebKeys;
-import java.util.Collection;
-import java.util.Date;
-import java.util.StringTokenizer;
-import java.util.concurrent.ExecutionException;
-
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.HttpSession;
 
 /**
  * @author Jonathan Gamba 8/24/18
@@ -57,7 +55,7 @@ public class OauthUtils {
 
   public static final String ROLES_TO_ADD = "ROLES_TO_ADD";
   public static final String CALLBACK_URL = "CALLBACK_URL";
-
+  public static final String CALLBACK_HOST = "CALLBACK_HOST";
   public static final String NATIVE = "native";
   public static final String REFERRER = "referrer";
 
@@ -69,19 +67,6 @@ public class OauthUtils {
   public static final String REMEMBER_ME = "rememberMe";
 
   public static final String EMPTY_SECRET = "";
-
-  private static class SingletonHolder {
-
-    private static final OauthUtils INSTANCE = new OauthUtils();
-  }
-
-  public static OauthUtils getInstance() {
-    return OauthUtils.SingletonHolder.INSTANCE;
-  }
-
-  private OauthUtils() {
-    // singleton
-  }
 
   public boolean forFrontEnd() {
 
@@ -124,6 +109,8 @@ public class OauthUtils {
     final String apiSecret = getProperty(providerName + "_API_SECRET");
     final String scope = getProperty(providerName + "_SCOPE");
     final String oauthCallBackURL = getProperty(CALLBACK_URL);
+    
+    
     ServiceBuilder builder = new ServiceBuilder(apiKey);
     if (null != apiSecret) {
       builder.apiSecret(apiSecret);
@@ -136,15 +123,22 @@ public class OauthUtils {
 
   private String getCallbackHost(final HttpServletRequest request) {
 
-    String hostName = request.getHeader("host");
-    hostName = hostName.contains(":") ? hostName.substring(0, hostName.indexOf(":")) : hostName;
+    
+    String callBackHost = getProperty(CALLBACK_HOST, null);
+    if(callBackHost!=null) {
+      return callBackHost;
+    }
+    
+    
+    callBackHost = (request.getHeader("Host")!=null) ? request.getHeader("Host") : request.getServerName();
+    callBackHost = callBackHost.contains(":") ? callBackHost.substring(0, callBackHost.indexOf(":")) : callBackHost;
 
     return (request.isSecure()) ? "https"
-        : "http" + "://"
-            + (request.getServerPort() == 80 || request.getServerPort() == 443 ? hostName : hostName + ":" + request.getServerPort());
+        : "http" + "://" + callBackHost
+            + (request.getServerPort() == 80 || request.getServerPort() == 443 ? "": ":" + request.getServerPort());
   }
 
-  private synchronized String getOauthProvider(final HttpServletRequest request) {
+  private String getOauthProvider(final HttpServletRequest request) {
     HttpSession session = request.getSession(false);
     String oauthProvider = getProperty(OAUTH_PROVIDER_DEFAULT, "org.scribe.builder.api.FacebookApi");
 
@@ -163,7 +157,7 @@ public class OauthUtils {
     if (null != session) {
       session.setAttribute(OAUTH_PROVIDER, oauthProvider);
     }
-
+    request.setAttribute(OAUTH_PROVIDER, oauthProvider);
     return oauthProvider;
   } // getOauthProvider.
 
@@ -195,7 +189,7 @@ public class OauthUtils {
    * @throws ExecutionException
    * @throws InterruptedException
    */
-  public User authenticate(final HttpServletRequest request, final HttpServletResponse response, final OAuth2AccessToken accessToken,
+  public User authenticate(final HttpServletRequest request, final HttpServletResponse response, OAuth2AccessToken accessToken,
       final OAuth20Service service, final String protectedResourceUrl, final String firstNameProp, final String lastNameProp)
       throws DotDataException, InterruptedException, ExecutionException, IOException {
 
@@ -210,9 +204,21 @@ public class OauthUtils {
           String.format("Unable to connect to end point [%s] [%s]", protectedResourceUrl, protectedCallResponse.getMessage()));
     }
 
+    
+    
     // Parse the response in order to get the user data
     final JSONObject userJsonResponse = (JSONObject) new JSONTool().generate(protectedCallResponse.getBody());
-
+    
+    
+    
+    //accessToken = service.refreshAccessToken(accessToken.getRefreshToken());
+    String groupRequestURL =getProperty("MicrosoftAzureActiveDirectory20Api_GROUP_MEMBERSHIP_URL");
+    final OAuthRequest groupRequest = new OAuthRequest(Verb.GET, groupRequestURL);
+    service.signRequest(accessToken, groupRequest);
+    final Response groupRquestResponse = service.execute(groupRequest);
+    
+    final JSONObject groupJsonResponse = (JSONObject) new JSONTool().generate(groupRquestResponse.getBody());
+    System.err.println(groupJsonResponse);
     User user = null;
 
     // Verify if the user already exist
@@ -316,8 +322,8 @@ public class OauthUtils {
     System.err.println("UserJSon=" + json);
     final String userId = UUIDGenerator.generateUuid();
     final String email = json.optString("email", json.optString("emailAddress", json.optString("userPrincipalName", null)));
-    final String lastName = json.optString(lastNameProp, json.optString("lastName", json.optString("surname", null)));
-    final String firstName = json.optString(firstNameProp, json.optString("firstName", json.optString("givenName", json.optString("displayName", null))));
+    final String lastName = json.optString(lastNameProp, json.optString("lastName", json.optString("surname", json.optString("family_name", json.optString("last_name", null)))));
+    final String firstName = json.optString(firstNameProp, json.optString("firstName", json.optString("givenName", json.optString("displayName", json.optString("given_name", json.optString("first_name", null))))));
 
 
     final User user = APILocator.getUserAPI().createUser(userId, email);
