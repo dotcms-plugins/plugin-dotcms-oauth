@@ -1,18 +1,13 @@
 package com.dotcms.osgi.oauth.provider;
 
-import static com.dotcms.osgi.oauth.util.OAuthPropertyBundle.getProperty;
 
-import com.dotcms.osgi.oauth.util.OauthUtils;
-import com.dotcms.osgi.oauth.service.DotService;
-import com.dotcms.rendering.velocity.viewtools.JSONTool;
-import com.dotmarketing.util.Logger;
-import com.dotmarketing.util.json.JSONArray;
-import com.dotmarketing.util.json.JSONException;
-import com.dotmarketing.util.json.JSONObject;
-import com.liferay.portal.model.User;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
+import java.util.Map;
 import java.util.Random;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 import org.scribe.builder.api.DefaultApi20;
 import org.scribe.exceptions.OAuthException;
 import org.scribe.extractors.AccessTokenExtractor;
@@ -24,6 +19,12 @@ import org.scribe.model.Token;
 import org.scribe.model.Verb;
 import org.scribe.oauth.OAuth20ServiceImpl;
 import org.scribe.oauth.OAuthService;
+import com.dotcms.osgi.oauth.service.DotService;
+import com.dotcms.osgi.oauth.util.JsonUtil;
+import com.dotcms.osgi.oauth.util.OauthUtils;
+import com.dotmarketing.util.Logger;
+import com.liferay.portal.model.User;
+import io.vavr.control.Try;
 
 /**
  * @author Jonathan Gamba 8/24/18
@@ -32,8 +33,12 @@ public class Okta20Api extends DefaultApi20 implements DotProvider {
 
     private final String state;
 
+    private final String Okta20Api_GROUPS_RESOURCE_URL = "/api/v1/users/%s/groups";
+
+
     public Okta20Api() {
         this.state = "state_" + new Random().nextInt(999_999);
+
     }
 
     /**
@@ -45,12 +50,16 @@ public class Okta20Api extends DefaultApi20 implements DotProvider {
     }
 
     private String getBaseAccessTokenEndpoint() {
-        return String.format("%s/oauth2/v1/token", getOrganizationURL());
+        return String.format("%s/oauth2/v1/token", config().baseOrganizationUrl);
     }
 
     @Override
     public String getRevokeTokenEndpoint() {
-        return String.format("%s/oauth2/v1/revoke", getOrganizationURL());
+        return String.format("%s/oauth2/v1/revoke", config().baseOrganizationUrl);
+    }
+  
+    public String getLogoutUrl() {
+        return String.format("%s/oauth2/v1/logout", config().baseOrganizationUrl);
     }
 
     @Override
@@ -60,39 +69,27 @@ public class Okta20Api extends DefaultApi20 implements DotProvider {
 
     /**
      * This is a starting point for browser-based OpenID Connect flows such as the implicit and
-     * authorization code flows. This request authenticates the user and returns tokens along with
-     * an authorization grant to the client application as a part of the callback response.
+     * authorization code flows. This request authenticates the user and returns tokens along with an
+     * authorization grant to the client application as a part of the callback response.
      * https://developer.okta.com/authentication-guide/implementing-authentication/auth-code
      */
     @Override
     public String getAuthorizationUrl(OAuthConfig config) {
 
         /*
-        NOTE: The callback domain must be added as a trusted origin -> admin/access/api/trusted_origins
-        also can be configured in Applications -> Your application -> General
+         * NOTE: The callback domain must be added as a trusted origin -> admin/access/api/trusted_origins
+         * also can be configured in Applications -> Your application -> General
          */
 
-        return getBaseAuthorizationUrl() + String.format(""
-                        + "?client_id=%s"
-                        + "&response_type=%s"
-                        + "&scope=%s"
-                        + "&redirect_uri=%s"
-                        + "&state=%s",
-                config.getApiKey(),
-                getResponseType(),
-                config.getScope(),
-                config.getCallback(),
-                getState()
-        );
+        return getBaseAuthorizationUrl() + String.format(
+                        "" + "?client_id=%s" + "&response_type=%s" + "&scope=%s" + "&redirect_uri=%s" + "&state=%s",
+                        config.getApiKey(), getResponseType(), config.getScope(), config.getCallback(), getState());
     }
 
     private String getBaseAuthorizationUrl() {
-        return String.format("%s/oauth2/v1/authorize", getOrganizationURL());
+        return String.format("%s/oauth2/v1/authorize", config().baseOrganizationUrl);
     }
 
-    private String getOrganizationURL() {
-        return getProperty(getSimpleName() + "_ORGANIZATION_URL");
-    }
 
     /**
      * response_type is code, indicating that we are using the authorization code grant type.
@@ -103,8 +100,8 @@ public class Okta20Api extends DefaultApi20 implements DotProvider {
 
     /**
      * state is an arbitrary alphanumeric string that the authorization server will reproduce when
-     * redirecting the user-agent back to the client. This is used to help prevent cross-site
-     * request forgery.
+     * redirecting the user-agent back to the client. This is used to help prevent cross-site request
+     * forgery.
      */
     private String getState() {
         return this.state;
@@ -152,66 +149,58 @@ public class Okta20Api extends DefaultApi20 implements DotProvider {
         }
 
         /**
-         * Custom implementation (extra call) in order to get roles/groups from the Okta server as
-         * the request that returns the user data does not have the user groups.
+         * Custom implementation (extra call) in order to get roles/groups from the Okta server as the
+         * request that returns the user data does not have the user groups.
          */
         @Override
-        public Collection<String> getGroups(User user, final JSONObject userJsonResponse) {
+        public Collection<String> getGroups(User user, final Map<String, Object> userJsonResponse) {
 
-            final String providerName = getSimpleName();
-            final String groupPrefix = getProperty(providerName + "_GROUP_PREFIX");
-            final String organizationURL = getProperty(providerName + "_ORGANIZATION_URL");
-            final String apiToken = getProperty(providerName + "_API_TOKEN");
-            final String groupsResourceUrl = String
-                    .format(getProperty(providerName + "_GROUPS_RESOURCE_URL"),
-                            user.getEmailAddress());
 
-            final OAuthRequest oauthGroupsRequest = new OAuthRequest(Verb.GET,
-                    organizationURL + groupsResourceUrl);
+            final String groupPrefix = config().getGroupPrefix();
+            final String apiToken = config().apiKey;
+            final String groupsResourceUrl = String.format(config().groupResource, user.getUserId());
+
+            final OAuthRequest oauthGroupsRequest = new OAuthRequest(Verb.GET, groupsResourceUrl);
             oauthGroupsRequest.addHeader("Authorization", "SSWS " + apiToken);
             oauthGroupsRequest.addHeader("Content-Type", "application/json");
             oauthGroupsRequest.addHeader("Accept", "application/json");
 
-            final Response groupsCallResponse = oauthGroupsRequest.send();
-            if (!groupsCallResponse.isSuccessful()) {
-                throw new OAuthException(
-                        String.format("Unable to connect to end point [%s] [%s]",
-                                groupsResourceUrl,
-                                groupsCallResponse.getMessage()));
-            }
-
-            Collection<String> groups = new ArrayList<>();
+            final Collection<String> groups = new ArrayList<>();
+            Response groupsCallResponse = null;
             try {
-                //Parse the response in order to get the user data
-                final JSONArray groupsJsonResponse = (JSONArray) new JSONTool()
-                        .generate(groupsCallResponse.getBody());
+                groupsCallResponse = oauthGroupsRequest.send();
+                if (!groupsCallResponse.isSuccessful()) {
 
-                for (int i = 0; i < groupsJsonResponse.length(); i++) {
-                    JSONObject groupJSONData = groupsJsonResponse.getJSONObject(i);
+                    Logger.error(this.getClass().getName(), String.format("Unable to connect to end point [%s] [%s]",
+                                    groupsResourceUrl, groupsCallResponse.getMessage()));
+                    return groups;
+                }
 
-                    final JSONObject profile = groupJSONData.getJSONObject("profile");
-                    if (null != profile) {
 
-                        final String group = profile.getString("name");
-                        if (null != group) {
+                // Parse the response in order to get the user data
+                final List<Map<String, Object>> groupsJsonResponse =
+                                (List<Map<String, Object>>) new JsonUtil().generate(groupsCallResponse.getBody());
 
-                            //Verify if we need to filter by prefix
-                            if (null != groupPrefix && !groupPrefix.isEmpty()) {
-                                if (group.startsWith(groupPrefix)) {
-                                    groups.add(group);
-                                }
-                            } else {
+                groupsJsonResponse.stream().filter(m -> m.containsKey("profile")).forEach(m -> {
+                    final Map<String, Object> profile = (Map<String, Object>) m.get("profile");
+                    final String group = (String) profile.get("name");
+                    if (null != group) {
+
+                        // Verify if we need to filter by prefix
+                        if (null != groupPrefix && !groupPrefix.isEmpty()) {
+                            if (group.startsWith(groupPrefix)) {
                                 groups.add(group);
                             }
+                        } else {
+                            groups.add(group);
                         }
                     }
-                }
-            } catch (JSONException e) {
-                throw new OAuthException(
-                        String.format(
-                                "Unable to get groups in remote authentication server [%s] [%s]",
-                                groupsResourceUrl,
-                                groupsCallResponse.getMessage()), e);
+                });
+
+
+            } catch (Exception e) {
+                Logger.warn(Okta20Api.class.getName(), String.format("Unable to get groups in remote authentication server [%s] [%s]",
+                                groupsResourceUrl, groupsCallResponse.getMessage()), e);
             }
 
             return groups;
@@ -220,35 +209,29 @@ public class Okta20Api extends DefaultApi20 implements DotProvider {
         @Override
         public void revokeToken(String token) {
 
-            //Now lets try to invalidate the token
+            // Now lets try to invalidate the token
             final String revokeURL = this.api.getRevokeTokenEndpoint();
 
             if (null != revokeURL && !revokeURL.isEmpty()) {
 
                 final OAuthRequest revokeRequest = new OAuthRequest(Verb.POST, revokeURL);
                 revokeRequest.addQuerystringParameter("token", token);
-                revokeRequest
-                        .addQuerystringParameter("token_type_hint", OAuthConstants.ACCESS_TOKEN);
+                revokeRequest.addQuerystringParameter("token_type_hint", OAuthConstants.ACCESS_TOKEN);
                 revokeRequest.addQuerystringParameter(OAuthConstants.CLIENT_ID, config.getApiKey());
-                revokeRequest.addQuerystringParameter(OAuthConstants.CLIENT_SECRET,
-                        config.getApiSecret());
+                revokeRequest.addQuerystringParameter(OAuthConstants.CLIENT_SECRET, config.getApiSecret());
 
                 final Response revokeCallResponse = revokeRequest.send();
 
                 if (!revokeCallResponse.isSuccessful()) {
-                    Logger.error(this.getClass(),
-                            String.format("Unable to revoke access token [%s] [%s] [%s]",
-                                    revokeURL,
-                                    token,
-                                    revokeCallResponse.getMessage()));
+                    Logger.error(this.getClass().getName(), String.format("Unable to revoke access token [%s] [%s] [%s]",
+                                    revokeURL, token, revokeCallResponse.getMessage()));
                 } else {
-                    Logger.info(this.getClass(), "Successfully revoked access token");
-                    Logger.info(this.getClass(), revokeCallResponse.getBody());
+                    Logger.info(this.getClass().getName(), "Successfully revoked access token");
+                    Logger.info(this.getClass().getName(), revokeCallResponse.getBody());
                 }
 
             }
         }
 
     }
-
 }

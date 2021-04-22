@@ -3,21 +3,20 @@ plugins {
 }
 
 sourceCompatibility = '1.8'
-version = '0.4.2'
+version = '20.12'
 
 repositories {
-    maven { url "http://repo.dotcms.com/artifactory/libs-release" }
+    maven { url "https://repo.dotcms.com/artifactory/libs-release" }
 }
-
 configurations {
-    pluginLibs
+    osgiLibs
 }
 
 dependencies {
-    compile('com.dotcms:dotcms:5.2.8') { transitive = true }
-    compile group: 'org.scribe', name: 'scribe', version: '1.3.7'
-    compileOnly group: 'javax.servlet', name: 'jsp-api', version: '2.0'
-    pluginLibs group: 'org.scribe', name: 'scribe', version: '1.3.7'
+    compile  ('com.dotcms:dotcms:20.11.1') 
+    compile ('org.scribe:scribe:1.3.7')
+    osgiLibs ('org.scribe:scribe:1.3.7')
+    testCompile 'junit:junit:4.12'
 }
 
 
@@ -33,19 +32,43 @@ jar {
                 'Bundle-Description': 'dotCMS - OAuth / OIDC ',
                 'Bundle-DocURL': 'https://dotcms.com/',
                 'Bundle-Activator': 'com.dotcms.osgi.oauth.Activator',
-                'Bundle-ClassPath': '.,libs/scribe-1.3.7.jar',
+                'Bundle-ClassPath' : "${classPathLibraries()}",
                 'Import-Package': '*;version=0'
         )
     }
 }
 
-task copyToLib(type: Copy) {
-    into "src/main/resources/libs"
-    from configurations.pluginLibs
+
+task cleanLibFiles(type: Delete) {
+    delete fileTree("src/main/resources/libs").matching {
+        include "**/*"
+    }
 }
 
-jar.dependsOn copyToLib
+task copyToLib(type: Copy) {
+    from configurations.osgiLibs
+    into "src/main/resources/libs"
+    
+}
+
+
+compileJava.dependsOn copyToLib
+
+
 jar.finalizedBy 'fragmentJar'
+
+def classPathLibraries() {
+
+    def bundleClassPath = "";
+    fileTree("src/main/resources/libs").filter { it.isFile() }.each { bundleClassPath += "libs/" + it.name + "," }
+
+    if (bundleClassPath != "") {
+        bundleClassPath = '.,' + bundleClassPath
+    }
+
+    return bundleClassPath
+}
+
 
 /////////////////////////
 //Fragment jar

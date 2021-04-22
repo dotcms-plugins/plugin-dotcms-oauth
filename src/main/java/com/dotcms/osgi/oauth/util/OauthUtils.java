@@ -1,30 +1,15 @@
 package com.dotcms.osgi.oauth.util;
 
-import static com.dotcms.osgi.oauth.util.OAuthPropertyBundle.getProperty;
-import static java.nio.charset.StandardCharsets.UTF_8;
 
-import com.dotcms.enterprise.PasswordFactoryProxy;
-import com.dotcms.enterprise.de.qaware.heimdall.PasswordException;
-import com.dotcms.osgi.oauth.service.DotService;
-import com.dotcms.rendering.velocity.viewtools.JSONTool;
-import com.dotmarketing.business.APILocator;
-import com.dotmarketing.business.Role;
-import com.dotmarketing.cms.factories.PublicEncryptionFactory;
-import com.dotmarketing.exception.DotDataException;
-import com.dotmarketing.exception.DotSecurityException;
-import com.dotmarketing.util.Logger;
-import com.dotmarketing.util.UUIDGenerator;
-import com.dotmarketing.util.json.JSONException;
-import com.dotmarketing.util.json.JSONObject;
-import com.liferay.portal.auth.PrincipalThreadLocal;
-import com.liferay.portal.model.User;
-import com.liferay.portal.util.WebKeys;
+import static com.dotcms.osgi.oauth.util.Constants.EMPTY_SECRET;
 import java.util.Collection;
 import java.util.Date;
-import java.util.StringTokenizer;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+import java.util.TreeMap;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.HttpSession;
 import org.scribe.builder.api.DefaultApi20;
 import org.scribe.exceptions.OAuthException;
 import org.scribe.model.OAuthConstants;
@@ -32,35 +17,36 @@ import org.scribe.model.OAuthRequest;
 import org.scribe.model.Response;
 import org.scribe.model.Token;
 import org.scribe.model.Verb;
+import org.scribe.model.Verifier;
 import org.scribe.oauth.OAuthService;
 import org.scribe.utils.OAuthEncoder;
 import org.scribe.utils.Preconditions;
+import com.dotcms.enterprise.PasswordFactoryProxy;
+import com.dotcms.enterprise.de.qaware.heimdall.PasswordException;
+import com.dotcms.osgi.oauth.app.AppConfig;
+import com.dotcms.osgi.oauth.service.DotService;
+import com.dotmarketing.business.APILocator;
+import com.dotmarketing.business.Role;
+import com.dotmarketing.cms.factories.PublicEncryptionFactory;
+import com.dotmarketing.exception.DotDataException;
+import com.dotmarketing.exception.DotRuntimeException;
+import com.dotmarketing.exception.DotSecurityException;
+import com.dotmarketing.util.Logger;
+import com.dotmarketing.util.UUIDGenerator;
+import com.dotmarketing.util.UtilMethods;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonMappingException;
+import com.liferay.portal.model.User;
+import com.liferay.portal.util.PortalUtil;
+import io.vavr.control.Try;
 
 /**
  * @author Jonathan Gamba 8/24/18
  */
 public class OauthUtils {
 
-    public static final String OAUTH_PROVIDER = "OAUTH_PROVIDER";
-    public static final String OAUTH_PROVIDER_DEFAULT = "DEFAULT_OAUTH_PROVIDER";
-    public static final String OAUTH_REDIRECT = "OAUTH_REDIRECT";
-    public static final String OAUTH_SERVICE = "OAUTH_SERVICE";
-    public static final String OAUTH_API_PROVIDER = "OAUTH_API_PROVIDER";
 
-    public static final String ROLES_TO_ADD = "ROLES_TO_ADD";
-    public static final String CALLBACK_URL = "CALLBACK_URL";
 
-    public static final String NATIVE = "native";
-    public static final String REFERRER = "referrer";
-
-    public static final String JAVAX_SERVLET_FORWARD_REQUEST_URI = "javax.servlet.forward.request_uri";
-
-    public static final String FEMALE = "female";
-    public static final String GENDER = "gender";
-
-    public static final String REMEMBER_ME = "rememberMe";
-
-    public static final String EMPTY_SECRET = "";
 
     private static class SingletonHolder {
 
@@ -70,206 +56,192 @@ public class OauthUtils {
     public static OauthUtils getInstance() {
         return OauthUtils.SingletonHolder.INSTANCE;
     }
+    public void setNoCacheHeaders(HttpServletResponse response) {
+        // set no cache on the login page
 
-    private OauthUtils() {
-        // singleton
+            Logger.info(this.getClass().getName(), "Login Flow, setting no-cache headers");
+            response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate"); 
+            response.setHeader("Pragma", "no-cache"); 
+            response.setDateHeader("Expires", 0); 
+
     }
 
-    public boolean forFrontEnd() {
 
-        final String useFor = OAuthPropertyBundle.getProperty("USE_OAUTH_FOR", "")
-                .toLowerCase();
-        return useFor.contains("frontend");
-    }
 
-    public boolean forBackEnd() {
 
-        final String useFor = OAuthPropertyBundle.getProperty("USE_OAUTH_FOR", "")
-                .toLowerCase();
-        return useFor.contains("backend");
-    }
-
-    public DefaultApi20 getAPIProvider(final HttpServletRequest request,
-            final HttpSession session) {
-        //Look for the provider to use
-        String oauthProvider = getOauthProvider(request, session);
+    public Optional<DefaultApi20> getAPIProvider(final AppConfig config) {
+        // Look for the provider to use
+        String oauthProvider = config.provider;
 
         DefaultApi20 apiProvider = null;
         if (null != oauthProvider) {
 
             try {
-                //Initializing the API provider
+                // Initializing the API provider
                 apiProvider = (DefaultApi20) Class.forName(oauthProvider).newInstance();
             } catch (Exception e) {
-                Logger.error(this.getClass(),
-                        String.format("Unable to instantiate API provider [%s] [%s]",
-                                oauthProvider, e.getMessage()), e);
+                Logger.warn(this.getClass().getName(), String.format("Unable to instantiate API provider [%s] [%s]",
+                                oauthProvider, e.getMessage()));
             }
         }
 
-        return apiProvider;
+        return Optional.ofNullable(apiProvider);
     }
 
-    private synchronized String getOauthProvider(final HttpServletRequest request,
-            final HttpSession session) {
 
-        String oauthProvider = getProperty(OAUTH_PROVIDER_DEFAULT,
-                "org.scribe.builder.api.FacebookApi");
-
-        if (null != session && null != session.getAttribute(OAUTH_PROVIDER)) {
-            oauthProvider = (String) session.getAttribute(OAUTH_PROVIDER);
-        }
-
-        if (null != request.getParameter(OAUTH_PROVIDER)) {
-            oauthProvider = request.getParameter(OAUTH_PROVIDER);
-        }
-
-        if (null != request.getAttribute(OAUTH_PROVIDER)) {
-            oauthProvider = (String) request.getAttribute(OAUTH_PROVIDER);
-        }
-
-        if (null != session) {
-            session.setAttribute(OAUTH_PROVIDER, oauthProvider);
-        }
-
-        return oauthProvider;
-    } // getOauthProvider.
 
     /**
-     * Default method implementation to extract the access token from the request token json
-     * response
+     * Default method implementation to extract the access token from the request token json response
      */
-    public Token extractToken(String response) {
+    public Token extractToken(final String response) {
 
         Preconditions.checkEmptyString(response,
-                "Response body is incorrect. Can't extract a token from an empty string");
+                        "Response body is incorrect. Can't extract a token from an empty string");
 
-        try {
-            final JSONObject jsonResponse = (JSONObject) new JSONTool().generate(response);
-            if (jsonResponse.has(OAuthConstants.ACCESS_TOKEN)) {
-                String token = OAuthEncoder
-                        .decode(jsonResponse.get(OAuthConstants.ACCESS_TOKEN).toString());
-                return new Token(token, EMPTY_SECRET, response);
-            } else {
-                throw new OAuthException(
-                        "Response body is incorrect. Can't extract a token from this: '"
-                                + response
-                                + "'", null);
-            }
-        } catch (Exception e) {
-            throw new OAuthException(
-                    "Response body is incorrect. Can't extract a token from this: '"
-                            + response
-                            + "'", null);
+
+        Map<String, Object> json = (Map<String, Object>) Try.of(() -> new JsonUtil().generate(response))
+                        .getOrElseThrow(e -> new DotRuntimeException("unable to get json", e));
+
+
+        if (json.containsKey(OAuthConstants.ACCESS_TOKEN)) {
+            String token = OAuthEncoder.decode(json.get(OAuthConstants.ACCESS_TOKEN).toString());
+            return new Token(token, EMPTY_SECRET, response);
         }
+        throw new OAuthException("Response body is incorrect. Can't extract a token from this: '" + response + "'",
+                        null);
+
+
     }
 
+    
     /**
      * This method gets the user from the remote service and either creates them in dotCMS and/or
      * updates
+     *
+     * @return User
+     * @throws JsonProcessingException
+     * @throws JsonMappingException
      */
     public User authenticate(final HttpServletRequest request, final HttpServletResponse response,
-            final Token accessToken, final OAuthService service,
-            final String protectedResourceUrl, final String firstNameProp,
-            final String lastNameProp)
-            throws DotDataException {
+                    final OAuthService service) throws DotDataException, JsonMappingException, JsonProcessingException {
 
-        final User systemUser = APILocator.getUserAPI().getSystemUser();
+        if(PortalUtil.getUser(request)!=null) {
+            return PortalUtil.getUser(request);
+        }
+        
+        
+        
+        final boolean frontEndUser =  request.getSession().getAttribute(Constants.FRONT_END_LOGIN)!=null;
+        AppConfig appConfig = AppConfig.config().get();
+        
+        
+        // Request the access token with the authentication code
+        final Verifier verifier = new Verifier(request.getParameter("code"));
+        final Token accessToken = service.getAccessToken(null, verifier);
+        Logger.info(this.getClass().getName(), "Got the Access Token!");
 
-        //Now that we have the token lets try a call to a restricted end point
-        final OAuthRequest oauthRequest = new OAuthRequest(Verb.GET, protectedResourceUrl);
+        // Now that we have the token lets try a call to a restricted end point
+        final OAuthRequest oauthRequest = new OAuthRequest(Verb.GET, appConfig.protectedResource);
         service.signRequest(accessToken, oauthRequest);
         final Response protectedCallResponse = oauthRequest.send();
         if (!protectedCallResponse.isSuccessful()) {
-            throw new OAuthException(
-                    String.format("Unable to connect to end point [%s] [%s]",
-                            protectedResourceUrl,
+            throw new OAuthException(String.format("Unable to connect to end point [%s] [%s]", appConfig.protectedResource,
                             protectedCallResponse.getMessage()));
         }
 
-        //Parse the response in order to get the user data
-        final JSONObject userJsonResponse = (JSONObject) new JSONTool()
-                .generate(protectedCallResponse.getBody());
-
+        // Case insensitive map (all lower case)
+        Map<String, Object> jsonMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        jsonMap.putAll((Map<String, Object>) new JsonUtil().generate(protectedCallResponse.getBody()));
+        
         User user = null;
 
-        //Verify if the user already exist
-        try {
-            Logger.info(this.getClass(), "Loading an user!");
-            final String email = userJsonResponse.getString("email");
-            user = APILocator.getUserAPI()
-                    .loadByUserByEmail(email, systemUser, false);
-            Logger.info(this.getClass(), "User loaded!");
-        } catch (Exception e) {
-            Logger.warn(this, "No matching user, creating");
+        // Verify if the user already exists
+        final String email = (String) getEmail(jsonMap);
+        final String subject = (String) jsonMap.get("sub");
+
+        Logger.info(this.getClass().getName(), "Loading user by email");
+        user = Try.of( ()-> APILocator.getUserAPI().loadByUserByEmail(email, APILocator.systemUser(), false)).getOrNull();
+        
+        if (user == null) {
+            Logger.info(this.getClass().getName(), "Loading user by id");
+            user = Try.of( ()-> APILocator.getUserAPI().loadUserById(subject)).getOrNull();
         }
+        
 
-        //Create the user if does not exist
-        if (null == user) {
-
+        // Create the user if does not exist
+        if (user == null) {
             try {
-                Logger.info(this.getClass(), "User not found, creating one!");
-                user = this
-                        .createUser(firstNameProp, lastNameProp, userJsonResponse, systemUser);
-
-                //Set the roles to the user
-                setRoles(service, userJsonResponse, user);
-
+                Logger.info(this.getClass().getName(), "User " + email + " not found, creating one!");
+                user = this.createUser(jsonMap);
             } catch (Exception e) {
-                Logger.warn(this, "Error creating user:" + e.getMessage(), e);
+                Logger.warn(this.getClass().getName(), "Error creating user " + email  + " : " + e.getMessage(), e);
                 throw new DotDataException(e.getMessage());
             }
         }
 
-        if (user.isActive()) {
+        if(!user.isActive()) {
+            
+            throw new DotRuntimeException("The user is not active in the system");
+        }
+        
+        jsonMap.put("access_token", accessToken);
 
-            //Authenticate to dotCMS
-            Logger.info(this.getClass(), "Doing login!");
-            HttpSession httpSession = request.getSession(true);
+        setSystemRoles(user, frontEndUser);
+        
+        // Set the roles to the user
+        setRoles(service, jsonMap, user);
 
-            if (this.forFrontEnd()) {
-                httpSession.setAttribute(com.dotmarketing.util.WebKeys.CMS_USER, user);
-            }
+        // Authenticate to dotCMS
+        Logger.info(this.getClass().getName(), "Doing OAuth login!");
 
-            if (this.forBackEnd()) {
+        
+        APILocator.getLoginServiceAPI().doCookieLogin(PublicEncryptionFactory.encryptString(user.getUserId()),
+                        request, response, false);
 
-                final boolean rememberMe = "true"
-                        .equalsIgnoreCase(getProperty(REMEMBER_ME, "true"));
-                APILocator.getLoginServiceAPI().doCookieLogin(PublicEncryptionFactory.encryptString
-                        (user.getUserId()), request, response, rememberMe);
+        Logger.info(this.getClass().getName(), "Finishing OAuth login!");
 
-                Logger.info(this.getClass(), "Finish back end login!");
-                PrincipalThreadLocal.setName(user.getUserId());
-                httpSession.setAttribute(WebKeys.USER_ID, user.getUserId());
-            }
 
-            //Keep the token in session
-            httpSession.setAttribute(OAuthConstants.ACCESS_TOKEN, accessToken.getToken());
+        // Keep the token in session
+        request.getSession().setAttribute(OAuthConstants.ACCESS_TOKEN, accessToken.getToken());
+    
+        return user;
+    } // authenticate.
+
+
+    public void setSystemRoles(User user, boolean frontEnd) {
+
+        final Role roleToAdd = frontEnd 
+                        ? Try.of(() -> APILocator.getRoleAPI().loadLoggedinSiteRole()).getOrNull()
+                        : Try.of(() -> APILocator.getRoleAPI().loadBackEndUserRole()).getOrNull();
+
+        if (roleToAdd != null) {
+            Try.run(() -> APILocator.getRoleAPI().addRoleToUser(roleToAdd, user)).onFailure(e->{Logger.warn(OauthUtils.class.getName(), e.getMessage(),e);});
         }
 
-        return user;
-    } //authenticate.
 
-    private void setRoles(final OAuthService service,
-            final JSONObject userJsonResponse,
-            final User user)
-            throws DotDataException {
+    }
+    
+    
+    
+    
+    public void setRoles(final OAuthService service, final Map<String, Object> userJsonResponse, final User user)
+                    throws DotDataException {
 
         /*
-        NOTE: We are not creating roles here, the role needs to exist in order to be
-        associated to the user
+         * NOTE: We are not creating roles here, the role needs to exist in order to be associated to the
+         * user
          */
-
-        //First lets handle the roles we need to add from the configuration file
-        Logger.info(this.getClass(), "User is active, adding roles!");
-        final String rolesToAdd = getProperty(ROLES_TO_ADD);
-        final StringTokenizer st = new StringTokenizer(rolesToAdd, ",;");
-        while (st.hasMoreElements()) {
-            final String roleKey = st.nextToken().trim();
+        AppConfig appConfig = AppConfig.config().get();
+        // First lets handle the roles we need to add from the configuration file
+        Logger.info(this.getClass().getName(), "User is active, adding roles!");
+        
+        final String[] rolesToAdd = appConfig.getArrayValue("role.extra");
+        
+        for (String roleKey : rolesToAdd) {
             this.addRole(user, roleKey);
         }
 
-        //Now from the remote server
+        // Now from the remote server
         Collection<String> remoteRoles;
         if (service instanceof DotService) {
             remoteRoles = ((DotService) service).getGroups(user, userJsonResponse);
@@ -283,7 +255,7 @@ public class OauthUtils {
 
     }
 
-    private void addRole(final User user, final String roleKey) throws DotDataException {
+    public void addRole(final User user, final String roleKey) throws DotDataException {
 
         final Role role = APILocator.getRoleAPI().loadRoleByKey(roleKey);
         if (role != null && !APILocator.getRoleAPI().doesUserHaveRole(user, role)) {
@@ -291,37 +263,73 @@ public class OauthUtils {
         }
     } // addRole.
 
-    private User createUser(final String firstNameProp,
-            final String lastNameProp,
-            final JSONObject json,
-            final User sys)
-            throws JSONException, DotDataException, DotSecurityException, PasswordException {
-
-        final String userId = UUIDGenerator.generateUuid();
-        final String email = new String(json.getString("email").getBytes(), UTF_8);
-        final String lastName = new String(json.getString(lastNameProp).getBytes(), UTF_8);
-        final String firstName = new String(json.getString(firstNameProp).getBytes(), UTF_8);
+    
+    public User createUser(final Map<String, Object> userJsonResponse )
+                    throws DotDataException, DotSecurityException, PasswordException {
+        final String subject = (String) userJsonResponse.get("sub");
+        final String email = getEmail(userJsonResponse);
+        final String userId = (subject != null) ? subject : UUIDGenerator.generateUuid();
+        
+        final String lastName = getLastName(userJsonResponse);
+        final String firstName = getFirstName(userJsonResponse);
 
         final User user = APILocator.getUserAPI().createUser(userId, email);
-
+        user.setNickName(firstName);
         user.setFirstName(firstName);
         user.setLastName(lastName);
         user.setActive(true);
 
         user.setCreateDate(new Date());
-        if (!json.isNull(GENDER)) {
-            user.setFemale(FEMALE.equals(json.getString(GENDER)));
-        }
-        user.setPassword(
-                PasswordFactoryProxy.generateHash(
-                        UUIDGenerator.generateUuid()
-                                + "/"
-                                + UUIDGenerator.generateUuid()
-                ));
+
+        user.setPassword(PasswordFactoryProxy
+                        .generateHash(UUIDGenerator.generateUuid() + "/" + UUIDGenerator.generateUuid()));
         user.setPasswordEncrypted(true);
-        APILocator.getUserAPI().save(user, sys, false);
+        APILocator.getUserAPI().save(user, APILocator.systemUser(), false);
 
         return user;
     } // createUser.
+    
+    private String getEmail(Map<String, Object> jsonMap) {
 
+        String email= (String) jsonMap.getOrDefault("email", 
+                        jsonMap.getOrDefault("email_address", 
+                        jsonMap.getOrDefault("emailaddress", 
+                        jsonMap.getOrDefault("userPrincipalName", null))));
+        
+        return UtilMethods.isValidEmail(email) ? email : null;
+        
+
+    }
+    private String getSubject(Map<String, Object> jsonMap) {
+
+        String email= (String) jsonMap.getOrDefault("email", 
+                        jsonMap.getOrDefault("email_address", 
+                        jsonMap.getOrDefault("emailaddress", 
+                        jsonMap.getOrDefault("userPrincipalName", null))));
+        
+        return UtilMethods.isValidEmail(email) ? email : null;
+        
+
+    }
+    
+    private String getFirstName(Map<String, Object> jsonMap) {
+        return (String) jsonMap.getOrDefault("first_name", 
+                        jsonMap.getOrDefault("firstname",
+                        jsonMap.getOrDefault("given_name", 
+                        jsonMap.getOrDefault("givenname", 
+                        "unknown"))));
+
+    }
+    
+    private String getLastName(Map<String, Object> jsonMap) {
+        return (String) jsonMap.getOrDefault("last_name", 
+                        jsonMap.getOrDefault("lastname",
+                        jsonMap.getOrDefault("family_name", 
+                        jsonMap.getOrDefault("familyname", 
+                        jsonMap.getOrDefault("surname", 
+                        "unknown")))));
+
+    }
+    
+    
 }

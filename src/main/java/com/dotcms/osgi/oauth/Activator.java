@@ -1,77 +1,51 @@
 package com.dotcms.osgi.oauth;
 
+import org.osgi.framework.BundleContext;
 import com.dotcms.filters.interceptor.FilterWebInterceptorProvider;
+import com.dotcms.filters.interceptor.WebInterceptor;
 import com.dotcms.filters.interceptor.WebInterceptorDelegate;
+import com.dotcms.osgi.oauth.app.AppUtil;
 import com.dotcms.osgi.oauth.interceptor.LoginRequiredOAuthInterceptor;
 import com.dotcms.osgi.oauth.interceptor.LogoutOAuthInterceptor;
 import com.dotcms.osgi.oauth.interceptor.OAuthCallbackInterceptor;
-import com.dotcms.osgi.oauth.rest.JsonWebTokenResource;
 import com.dotcms.osgi.oauth.viewtool.OAuthToolInfo;
-import com.dotcms.rest.config.RestServiceUtil;
-import com.dotmarketing.filters.AutoLoginFilter;
-import com.dotmarketing.filters.LoginRequiredFilter;
-import com.dotmarketing.loggers.Log4jUtil;
+import com.dotmarketing.filters.InterceptorFilter;
 import com.dotmarketing.osgi.GenericBundleActivator;
 import com.dotmarketing.util.Config;
 import com.dotmarketing.util.Logger;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.core.LoggerContext;
-import org.osgi.framework.BundleContext;
 
 public class Activator extends GenericBundleActivator {
 
-    private Class jsonWebTokenResource = JsonWebTokenResource.class;
+    private WebInterceptor[] webInterceptors = {
+                new LoginRequiredOAuthInterceptor(), 
+                new OAuthCallbackInterceptor(), 
+                new LogoutOAuthInterceptor()
+            };
 
-    private LoginRequiredOAuthInterceptor loginRequiredOAuthInterceptor;
-    private OAuthCallbackInterceptor oAuthCallbackInterceptor;
-    private LogoutOAuthInterceptor logoutOAuthInterceptor;
 
-    private LoggerContext pluginLoggerContext;
+    final WebInterceptorDelegate delegate =
+                    FilterWebInterceptorProvider.getInstance(Config.CONTEXT).getDelegate(InterceptorFilter.class);
 
-    @SuppressWarnings("unchecked")
     public void start(org.osgi.framework.BundleContext context) throws Exception {
 
-        //Initializing log4j...
-        final LoggerContext dotcmsLoggerContext = Log4jUtil.getLoggerContext();
 
-        //Initialing the log4j context of this plugin based on the dotCMS logger context
-        this.pluginLoggerContext = (LoggerContext) LogManager
-                .getContext(this.getClass().getClassLoader(),
-                        false,
-                        dotcmsLoggerContext,
-                        dotcmsLoggerContext.getConfigLocation());
-
-        Logger.info(this.getClass(), "Starting OSGi OAuth Filter");
+        Logger.info(Activator.class.getName(), "Starting OSGi OAuth Interceptor");
 
         this.initializeServices(context);
         this.registerViewToolService(context, new OAuthToolInfo());
 
-        final FilterWebInterceptorProvider filterWebInterceptorProvider = FilterWebInterceptorProvider
-                .getInstance(Config.CONTEXT);
+        Config.setProperty("PREVENT_SESSION_FIXATION_ON_LOGIN", false);
+        
+        
+        
+        
+        new AppUtil().copyAppYml();
 
-        final WebInterceptorDelegate loginRequiredDelegate = filterWebInterceptorProvider
-                .getDelegate(LoginRequiredFilter.class);
-        if (null != loginRequiredDelegate) {
-            System.out.println("Adding the LoginRequiredOAuthInterceptor");
-            this.loginRequiredOAuthInterceptor = new LoginRequiredOAuthInterceptor();
-            loginRequiredDelegate.addFirst(this.loginRequiredOAuthInterceptor);
+        for (WebInterceptor webIn : webInterceptors) {
+            Logger.info(Activator.class.getName(), "Adding the " + webIn.getName());
+            delegate.addFirst(webIn);
         }
 
-        final WebInterceptorDelegate autoLoginDelegate = filterWebInterceptorProvider
-                .getDelegate(AutoLoginFilter.class);
-        if (null != autoLoginDelegate) {
-            System.out.println("Adding the LogoutOAuthInterceptor");
-            this.logoutOAuthInterceptor = new LogoutOAuthInterceptor();
-            autoLoginDelegate.addFirst(this.logoutOAuthInterceptor);
-
-            System.out.println("Adding the OAuthCallbackInterceptor");
-            this.oAuthCallbackInterceptor = new OAuthCallbackInterceptor();
-            autoLoginDelegate.addFirst(this.oAuthCallbackInterceptor);
-        }
-
-        Logger.info(this.getClass(),
-                "Adding new Restful Service: " + jsonWebTokenResource.getSimpleName());
-        RestServiceUtil.addResource(jsonWebTokenResource);
     }
 
     @Override
@@ -79,47 +53,16 @@ public class Activator extends GenericBundleActivator {
 
         unregisterServices(context);
 
-        final FilterWebInterceptorProvider filterWebInterceptorProvider = FilterWebInterceptorProvider
-                .getInstance(Config.CONTEXT);
-
+        
+        new AppUtil().deleteYml();
         // Cleaning up the interceptors
 
-        if (null != this.loginRequiredOAuthInterceptor) {
-            final WebInterceptorDelegate loginRequiredDelegate = filterWebInterceptorProvider
-                    .getDelegate(LoginRequiredFilter.class);
 
-            if (null != loginRequiredDelegate) {
-                System.out.println("Removing the LoginRequiredOAuthInterceptor");
-                loginRequiredDelegate.remove(LoginRequiredOAuthInterceptor.class.getName(), true);
-            }
+        for (WebInterceptor webIn : webInterceptors) {
+            Logger.info(Activator.class.getName(), "Removing the " + webIn.getClass().getName());
+            delegate.remove(webIn.getName(), true);
         }
 
-        if (null != this.oAuthCallbackInterceptor) {
-            final WebInterceptorDelegate autoLoginDelegate = filterWebInterceptorProvider
-                    .getDelegate(AutoLoginFilter.class);
-
-            if (null != autoLoginDelegate) {
-                System.out.println("Removing the OAuthCallbackInterceptor");
-                autoLoginDelegate.remove(OAuthCallbackInterceptor.class.getName(), true);
-            }
-        }
-
-        if (null != this.logoutOAuthInterceptor) {
-            final WebInterceptorDelegate autoLoginDelegate = filterWebInterceptorProvider
-                    .getDelegate(AutoLoginFilter.class);
-
-            if (null != autoLoginDelegate) {
-                System.out.println("Removing the LogoutOAuthInterceptor");
-                autoLoginDelegate.remove(LogoutOAuthInterceptor.class.getName(), true);
-            }
-        }
-
-        Logger.info(this.getClass(),
-                "Removing new Restful Service: " + jsonWebTokenResource.getSimpleName());
-        RestServiceUtil.removeResource(jsonWebTokenResource);
-
-        //Shutting down log4j in order to avoid memory leaks
-        Log4jUtil.shutdown(pluginLoggerContext);
     }
 
 }

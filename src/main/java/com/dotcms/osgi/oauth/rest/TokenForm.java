@@ -1,7 +1,7 @@
 package com.dotcms.osgi.oauth.rest;
 
-import com.dotcms.repackage.com.fasterxml.jackson.annotation.JsonProperty;
-import com.dotcms.repackage.com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.dotcms.rest.api.Validated;
 
 @JsonDeserialize(builder = TokenForm.Builder.class)

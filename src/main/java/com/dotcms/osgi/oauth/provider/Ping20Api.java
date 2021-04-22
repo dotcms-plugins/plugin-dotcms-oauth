@@ -10,6 +10,7 @@ import com.dotmarketing.util.json.JSONObject;
 import com.liferay.portal.model.User;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Map;
 import java.util.Random;
 import org.scribe.builder.api.DefaultApi20;
 import org.scribe.exceptions.OAuthException;
@@ -159,17 +160,17 @@ public class Ping20Api extends DefaultApi20 implements DotProvider {
         }
 
         @Override
-        public Collection<String> getGroups(User user, final JSONObject userJsonResponse) {
+        public Collection<String> getGroups(User user, final Map<String,Object> userJsonResponse) {
 
             Collection<String> groupsCollection = null;
             try {
-                if (null != userJsonResponse && userJsonResponse.has("groups")) {
+                if (null != userJsonResponse && userJsonResponse.containsKey("groups")) {
 
-                    final String groups = userJsonResponse.getString("groups");
+                    final String groups = userJsonResponse.get("groups").toString();
                     String[] groupsArray = groups.split(",");
                     groupsCollection = Arrays.asList(groupsArray);
                 }
-            } catch (JSONException e) {
+            } catch (Exception e) {
                 throw new OAuthException(
                         String.format(
                                 "Unable to get groups from the remote user data [%s]",
