@@ -17,8 +17,5 @@ public class AppSecretEventSubscriber implements EventSubscriber<AppSecretSavedE
     @Override
     public void notify(AppSecretSavedEvent event) {
         Logger.info(this.getClass().getName(), "We got a secret event for : " + event.getKey() + " from: " + event.getUserId());
-        
-
-        
     }
 }

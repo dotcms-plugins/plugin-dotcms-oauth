@@ -46,7 +46,7 @@ import io.vavr.control.Try;
 public class MicrosoftAzureActiveDirectoryApi extends DefaultApi20 implements DotProvider {
 
 
-    private static final String MSFT_ENDPOINT = "https://login.microsoftonline.com";
+    public static final String MSFT_ENDPOINT = "https://login.microsoftonline.com";
     private static final String MSFT_AUTHORIZATION = MSFT_ENDPOINT + "/common/oauth2/v2.0/authorize";
     private static final String MSFT_TOKEN = MSFT_ENDPOINT + "/common/oauth2/v2.0/token";
     private static final String MSFT_LOGOUT = MSFT_ENDPOINT + "/common/oauth2/v2.0/logout";
