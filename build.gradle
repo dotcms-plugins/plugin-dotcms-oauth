@@ -13,7 +13,7 @@ configurations {
 }
 
 dependencies {
-    compile  ('com.dotcms:dotcms:20.11.1') 
+    compile  ('com.dotcms:dotcms:22.03')
     compile ('org.scribe:scribe:1.3.7')
     osgiLibs ('org.scribe:scribe:1.3.7')
     testCompile 'junit:junit:4.12'

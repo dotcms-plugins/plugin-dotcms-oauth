@@ -3,6 +3,7 @@ package com.dotcms.osgi.oauth;
 import com.dotcms.osgi.oauth.app.velocity.DotVelocitySecretAppUtil;
 import com.dotcms.osgi.oauth.viewtool.ADFSToolInfo;
 import com.dotcms.osgi.oauth.viewtool.SecretInfo;
+import com.dotcms.osgi.oauth.viewtool.cache.DotCacheToolInfo;
 import org.osgi.framework.BundleContext;
 import com.dotcms.filters.interceptor.FilterWebInterceptorProvider;
 import com.dotcms.filters.interceptor.WebInterceptor;
@@ -36,6 +37,7 @@ public class Activator extends GenericBundleActivator {
         this.registerViewToolService(context, new OAuthToolInfo());
         this.registerViewToolService(context, new SecretInfo());
         this.registerViewToolService(context, new ADFSToolInfo());
+        this.registerViewToolService(context, new DotCacheToolInfo());
 
         Config.setProperty("PREVENT_SESSION_FIXATION_ON_LOGIN", false);
         
