@@ -23,7 +23,7 @@ public class DotCacheTool implements ViewTool {
 
     final Lazy<BlockDirectiveCache> cache;
 
-    final static String DOT_CACHE_PREFIX="DotCachePrefix";
+    public final static String DOT_CACHE_PREFIX="DotCachePrefix";
     
     
     public DotCacheTool() {
