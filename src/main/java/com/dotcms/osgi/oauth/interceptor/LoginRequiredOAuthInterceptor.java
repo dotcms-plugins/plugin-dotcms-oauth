@@ -8,11 +8,13 @@ import static com.dotcms.osgi.oauth.util.Constants.OAUTH_SERVICE;
 import static com.dotcms.osgi.oauth.util.Constants.REFERRER;
 import java.io.IOException;
 import java.io.StringWriter;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import com.dotmarketing.util.Config;
 import com.dotmarketing.util.UtilMethods;
 import org.scribe.builder.ServiceBuilder;
 import org.scribe.builder.api.DefaultApi20;
@@ -40,8 +42,11 @@ public class LoginRequiredOAuthInterceptor implements WebInterceptor {
 
     
     private static final List<String> BACK_END_URLS = ImmutableList.of("/html/portal/login,", "/dotAdmin/", "/c/");
-    private static final List<String> BACK_END_URLS_TO_ALLOW = ImmutableList.of(".bundle.", "/appconfiguration",
-            "/authentication", ".chunk.", "/loginform", ".woff", ".ttf", "/logout", ".js", ".css");
+    private static final String [] ALLOWED_URLS = Config.getStringArrayProperty("OAUTH_LOGIN_ALLOWED_URLS",
+            new String[]{".bundle.", "/appconfiguration", "/api/",
+            "/authentication", ".chunk.", "/loginform", ".woff", ".ttf", "/logout", ".js", ".css"});
+
+    private static final List<String> BACK_END_URLS_TO_ALLOW = Arrays.asList(ALLOWED_URLS);
     private static final List<String> FRONT_END_URLS = ImmutableList.of("/dotCMS/login","/application/login/login*","/login*");
 
     private static final Token EMPTY_TOKEN = null;
